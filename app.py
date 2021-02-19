@@ -6,6 +6,8 @@ import re
 import string
 import pickle
 import joblib
+import timeit
+import memory_profiler
 
 nltk.download('stopwords')
 
@@ -13,36 +15,28 @@ stopwords = nltk.corpus.stopwords.words('english')
 ps = nltk.PorterStemmer()
 wn = nltk.WordNetLemmatizer()
 
+option = st.sidebar.selectbox(
+   'Which ML model would you like to use?',
+     ('Logistic Regression', 'Linear SVC', 'Naive Bayes'))
+st.sidebar.write('You selected:', option)
 st.title('Toxic Comment Analysis.')
 st.markdown('''
 	Used Natural language Processing to clean and vectorize input data and
-	 Machine learning algorithm(Linear SVC) to predict if a comment is toxic or not. 
-	 The model had a F1 accuracy of 71%. ''')
+	 Machine learning algorithmto predict if a comment is toxic or not. 
+	 The implemented models named on the sidebar had a F1 accuracy of 72.1%, 72.3% and 65.1% respectively. ''')
 # function to remove punctuation, tokenize, remove stopwords and stem
 @st.cache
 def clean_text(text):
-    text = re.sub(r"what's", "what is ", text)
-    text = re.sub(r"\'s", " ", text)
-    text = re.sub(r"\'ve", " have ", text)
-    text = re.sub(r"can't", "cannot ", text)
-    text = re.sub(r"n't", " not ", text)
-    text = re.sub(r"I'm", "i am ", text)
-    text = re.sub(r"i'm", "i am ", text)
-    text = re.sub(r"\'re", " are ", text)
-    text = re.sub(r"\'d", " would ", text)
-    text = re.sub(r"\'ll", " will ", text)
-    text = re.sub(r"\'scuse", " excuse ", text)
-   
-    
-    text = "".join([word.lower() for word in text if word not in string.punctuation])
-    
-    tokens = re.split('\W+', text)
+    text = ''.join([i for i in text if not i.isdigit()]) #remove integer values
+    text = "".join([word.lower() for word in text if word not in string.punctuation])#make lowercase and remove punctuation
+    text = ' '.join( [word for word in text.split() if len(word)>2] )#remove words less than 2 letters
+     
+    tokens = re.split('\W+', text) 
     #words = [wn.lemmatize(word, 'v') for word in tokens]
-    text = [ps.stem(word) for word in tokens if word not in stopwords]
+    text = [ps.stem(word) for word in tokens if word not in stopwords] 
     text = [wn.lemmatize(word) for word in text] 
     
     text = " ".join(text)
-    text = " ".join([word for word in text.split() if len(word)>2])
     return text
 @st.cache
 def vectorizing(text):
@@ -83,11 +77,19 @@ def create_features(cleaned_text, vectorized_text):
 	df = pd.DataFrame([inp], columns=['contains_toxic_word', 'contains_severe_toxic_word', 'contains_obscene_word', 'contains_threat_word', 'contains_insult_word', 'contains_identity_hate_word'])
 	X = pd.concat([df, pd.DataFrame(vectorized_text.toarray())], axis=1)
 	return X
-def predict(features):
-
-	svc_from_joblib = joblib.load('toxicmodel.pkl')  
-	y = svc_from_joblib.predict(features)
-	return y
+def predict(features, model = 'Linear SVC'):
+  start_time = timeit.default_timer()
+  if model == 'Logistic Regression':
+    svc_from_joblib = joblib.load('lintoxicmodel.pkl') 
+  if model == 'Linear SVC':
+    svc_from_joblib = joblib.load('svctoxicmodel.pkl') 
+  if model == 'Naive Bayes':
+    svc_from_joblib = joblib.load('bayestoxicmodel.pkl') 
+  
+  y = svc_from_joblib.predict(features)
+  elapsed = timeit.default_timer() - start_time
+  
+  return y,elapsed
 
 def main():
 	message = st.text_area('write a comment here:')
@@ -99,7 +101,9 @@ def main():
 		#st.write(vectorized_text)
 		features = create_features(cleaned_text, vectorized_text)
 		#st.write(features)
-		prediction = predict(features)
+		prediction, elapsed = predict(features, model = option)
+		st.info("Time elapsed to predict is {:2f} minutes". format(elapsed/60))
+		
 		df = pd.DataFrame({
 			"contains_toxic": prediction[:, 0],
 			"contains_severe_toxic": prediction[:, 1],
@@ -109,6 +113,9 @@ def main():
 			"contains_identity_hate": prediction[:, 5]
 			}, index=['Comment'])
 		st.write(df.T)
+		
+		#st.write(i)
+
 
 if __name__ == '__main__':
     main()
